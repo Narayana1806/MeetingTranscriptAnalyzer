@@ -2,9 +2,13 @@ import streamlit as st
 import PyPDF2
 import google.generativeai as genai
 import os
+import tempfile
 
-# ✅ Gemini API key (REQUIRED for Hugging Face secret setting)
-GEMINI_API_KEY = ("AIzaSyDIndYyJczNWDb1Gih8_PYk5A0s3X0taLc")
+# For voice input
+import whisper
+
+# ✅ Gemini API key
+GEMINI_API_KEY = "AIzaSyDIndYyJczNWDb1Gih8_PYk5A0s3X0taLc"
 genai.configure(api_key=GEMINI_API_KEY)
 
 st.set_page_config(page_title="📋 Meeting Transcript Analyzer", layout="wide")
@@ -30,10 +34,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<h1 class="main-title">📋 Meeting Transcript Analyzer</h1>', unsafe_allow_html=True)
-st.write("Upload a `.pdf` meeting transcript or paste text to get summaries, decisions, action items, and sentiment.")
+st.write("Upload a `.pdf`, `.mp3`, or `.wav` meeting audio file, or paste text to get summaries, decisions, action items, and sentiment.")
 
-# Upload and Text Input
+# File Inputs
 uploaded_file = st.file_uploader("📂 Upload PDF", type=["pdf"])
+uploaded_audio = st.file_uploader("🎙️ Upload Voice Recording", type=["mp3", "wav", "m4a"])
 text_input = st.text_area("📝 Or paste transcript text here", height=250)
 
 # PDF Extractor
@@ -46,17 +51,25 @@ def extract_text_from_pdf(file):
             text += page_text + "\n"
     return text.strip()
 
+# Voice to Text using Whisper
+def transcribe_audio(file):
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
+        tmp.write(file.read())
+        tmp_path = tmp.name
+    model = whisper.load_model("base")
+    result = model.transcribe(tmp_path)
+    os.remove(tmp_path)
+    return result["text"]
+
 # LLM Analyzer
 def analyze_transcript(text):
     try:
-        model = genai.GenerativeModel("learnlm-1.5-pro-experimental")  # ✅ Correct model name for public Gemini API
+        model = genai.GenerativeModel("learnlm-1.5-pro-experimental")
         prompt = f"""
         Given the following meeting transcript, summarize the main points, list key decisions and action items, 
         and analyze the overall sentiment.
-
         Transcript:
         {text}
-
         Return the output in a clean structured format with headers:
         1. Summary
         2. Key Decisions
@@ -69,10 +82,12 @@ def analyze_transcript(text):
         return f"⚠️ Error: {str(e)}"
 
 # Main Logic
-if uploaded_file or text_input.strip():
+if uploaded_file or uploaded_audio or text_input.strip():
     with st.spinner("🔍 Analyzing..."):
         if uploaded_file:
             transcript = extract_text_from_pdf(uploaded_file)
+        elif uploaded_audio:
+            transcript = transcribe_audio(uploaded_audio)
         else:
             transcript = text_input.strip()
 
